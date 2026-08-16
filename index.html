@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="az">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BeatMix</title>
+  
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://unpkg.com/wavesurfer.js@7/dist/wavesurfer.min.js"></script>
+  <script src="https://unpkg.com/wavesurfer.js@7/dist/plugins/regions.min.js"></script>
+  <!-- MP3 formatına kodlamaq üçün LameJS kitabxanası -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
+</head>
+<body>
+
+  <div class="studio-container">
+    
+    <header class="top-bar">
+      <h2>🎧 BeatMix</h2>
+      <div class="global-controls">
+        <button id="zoom-transition-btn" class="btn primary-btn">🔍 Zoom Et & Miks Ekranına Keç</button>
+        <button id="open-lines-info-btn" class="btn info-btn" style="display:none;">ℹ️ Xətlər Haqqında</button>
+        <button id="play-mix-btn" class="btn play-btn" style="display:none;">▶ Miksi Oxut</button>
+        <button id="back-to-select-btn" class="btn secondary-btn" style="display:none;">↩ Seçimə Geri Qayıt</button>
+        
+        <!-- Yükləmə menyusu (Sətiriçi dizaynlar silinib, tam CSS-ə həvalə edilib) -->
+        <div id="download-container" class="download-dropdown" style="display: none;">
+          <button id="download-toggle-btn" class="btn btn-cyan">
+            ⬇ Yüklə ▼
+          </button>
+          <div id="download-menu" class="dropdown-content">
+            <a href="#" id="export-wav">🎵 WAV Kimi Yüklə (Yüksək Keyfiyyət)</a>
+            <a href="#" id="export-mp3">🎧 MP3 Kimi Yüklə (Standart Keyfiyyət)</a>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- 1. SEÇİM EKRANI -->
+    <div id="selection-view" class="view-section">
+      <div class="info-banner">
+        Mahnıları yükləyin və səs dalğası üzərində aralığı seçib önizləmə düyməsi ilə dinləyin.
+      </div>
+      
+      <!-- Track 1 -->
+      <div class="track-card">
+        <div class="track-header">
+          <div class="track-info">
+            <div class="file-input-wrapper">
+              <input type="file" id="audio-file-1" accept="audio/*" class="file-input">
+              <button type="button" class="yt-btn" onclick="openYtModal(1)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="#ff0000"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+                YouTube
+              </button>
+            </div>
+            <span id="track-title-1" class="track-name">1-ci Mahnı</span>
+          </div>
+          <div class="track-meta">
+            <button id="preview-btn-1" class="btn preview-btn" disabled>▶ Dinlə</button>
+            <div class="meta-item"><label>BPM</label><input type="text" id="bpm-1" value="---" class="readonly-box" readonly></div>
+            <div class="meta-item"><label>Camelot</label><input type="text" id="key-1" value="---" class="readonly-box" readonly></div>
+            <div class="meta-item"><label>Aralıq (san)</label><input type="number" id="duration-1" value="30" class="time-input"></div>
+          </div>
+        </div>
+        <div class="waveform-box" id="full-waveform-1">
+          <div id="wave-badge-1" class="wave-badge">1-ci Mahnı</div>
+        </div>
+      </div>
+
+      <!-- Track 2 -->
+      <div class="track-card">
+        <div class="track-header">
+          <div class="track-info">
+            <div class="file-input-wrapper">
+              <input type="file" id="audio-file-2" accept="audio/*" class="file-input">
+              <button type="button" class="yt-btn" onclick="openYtModal(2)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="#ff0000"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+                YouTube
+              </button>
+            </div>
+            <span id="track-title-2" class="track-name">2-ci Mahnı</span>
+          </div>
+          <div class="track-meta">
+            <button id="preview-btn-2" class="btn preview-btn" disabled>▶ Dinlə</button>
+            <div class="meta-item"><label>BPM</label><input type="text" id="bpm-2" value="---" class="readonly-box" readonly></div>
+            <div class="meta-item"><label>Camelot</label><input type="text" id="key-2" value="---" class="readonly-box" readonly></div>
+            <div class="meta-item"><label>Aralıq (san)</label><input type="number" id="duration-2" value="30" class="time-input"></div>
+          </div>
+        </div>
+        <div class="waveform-box" id="full-waveform-2">
+          <div id="wave-badge-2" class="wave-badge">2-ci Mahnı</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. BİRLƏŞDİRİLMİŞ ZOOM EKRANI -->
+    <div id="zoom-view" class="view-section" style="display:none;">
+      <div class="info-banner">
+        Miks seçilmiş aralıq ərzində oxuyacaq. Xətt nöqtələrini istədiyiniz kimi şaquli və üfüqi hərəkət etdirin.
+      </div>
+
+      <div class="combined-zoom-box">
+        
+        <!-- ÜST MAHNI PANELİ -->
+        <div class="track-control-bar">
+          <span><b id="zoom-title-1" style="color:#fff;">1-ci Mahnı</b> | BPM: <b id="zoom-bpm-1">---</b> | Camelot: <b id="zoom-key-1">---</b></span>
+          <div class="shift-buttons">
+            <button class="shift-btn" onclick="shiftTrack(1, -20)">◀ Sola</button>
+            <button class="shift-btn" onclick="shiftTrack(1, 20)">Sağa ▶</button>
+          </div>
+        </div>
+
+        <!-- ZAMAN XƏTTİ SAHƏSİ -->
+        <div class="combined-tracks-wrapper" id="master-timeline">
+          
+          <div id="global-playhead"></div>
+          
+          <!-- Üst Mahnı Xətti -->
+          <div class="timeline-lane" id="lane-1">
+            <div class="track-clip" id="clip-track-1">
+              <div id="zoomed-waveform-1" class="zoomed-wave"></div>
+              <canvas id="canvas-track-1" class="track-automation-canvas"></canvas>
+            </div>
+          </div>
+
+          <div class="track-divider"></div>
+
+          <!-- Alt Mahnı Xətti -->
+          <div class="timeline-lane" id="lane-2">
+            <div class="track-clip" id="clip-track-2">
+              <div id="zoomed-waveform-2" class="zoomed-wave"></div>
+              <canvas id="canvas-track-2" class="track-automation-canvas"></canvas>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- ALT MAHNI PANELİ -->
+        <div class="track-control-bar" style="margin-top: 10px;">
+          <span><b id="zoom-title-2" style="color:#fff;">2-ci Mahnı</b> | BPM: <b id="zoom-bpm-2">---</b> | Camelot: <b id="zoom-key-2">---</b></span>
+          <div class="shift-buttons">
+            <button class="shift-btn" onclick="shiftTrack(2, -20)">◀ Sola</button>
+            <button class="shift-btn" onclick="shiftTrack(2, 20)">Sağa ▶</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- YOUTUBE MODAL PƏNCƏRƏSİ -->
+  <div id="yt-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-box">
+      <h3>YouTube Linkindən Mahnı Əlavə Et</h3>
+      <input type="text" id="yt-url-input" placeholder="https://www.youtube.com/watch?v=..." />
+      <div class="modal-actions">
+        <button type="button" class="btn-add" onclick="fetchYouTubeAudio()">Əlavə et</button>
+        <button type="button" class="btn-close" onclick="closeYtModal()">Ləğv et</button>
+      </div>
+      <div id="yt-status" class="status-text" style="display: none;">Mahnı serverdən emal olunur, gözləyin...</div>
+    </div>
+  </div>
+
+  <!-- XƏTLƏR HAQQINDA ÇOXDİLLİ MƏLUMAT MODALI -->
+  <div id="lines-info-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-box lines-info-box">
+      <div class="modal-header">
+        <h3 id="info-modal-title">🎛️ Xətlər və İdarəetmə Haqqında</h3>
+        <div class="lang-selector">
+          <button class="lang-btn active" data-lang="az">AZ</button>
+          <button class="lang-btn" data-lang="en">EN</button>
+          <button class="lang-btn" data-lang="ru">RU</button>
+          <button class="lang-btn" data-lang="tr">TR</button>
+          <button class="lang-btn" data-lang="de">DE</button>
+        </div>
+        <button id="close-lines-info-btn" class="close-btn">&times;</button>
+      </div>
+      
+      <div class="modal-body" id="info-modal-body">
+        <!-- Məlumat avtomatik olaraq JavaScript tərəfindən doldurulacaq -->
+      </div>
+    </div>
+  </div>
+
+  <script src="js/waveform.js"></script>
+</body>
+</html>
