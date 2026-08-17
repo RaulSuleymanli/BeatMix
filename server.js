@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs'); // Faylları silmək üçün əlavə etdik
 const youtubeDl = require('youtube-dl-exec');
 const ffmpegPath = require('ffmpeg-static');
 
@@ -8,7 +9,6 @@ const app = express();
 app.use(cors());
 app.use(express.static(path.join(__dirname)));
 
-// Linki təmizləmək üçün funksiya
 function cleanUrl(url) {
   try {
     const parsed = new URL(url);
@@ -22,7 +22,6 @@ function cleanUrl(url) {
   }
 }
 
-// Musiqi yükləmə (Download) bölməsi
 app.get('/download', async (req, res) => {
   const rawURL = req.query.url;
   if (!rawURL) return res.status(400).send('Link daxil edilməyib.');
@@ -30,21 +29,30 @@ app.get('/download', async (req, res) => {
   const videoURL = cleanUrl(rawURL);
   console.log(`\n>>> [YÜKLƏNİR]: ${videoURL}`);
 
-  try {
-    res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('Content-Disposition', 'attachment; filename="track.mp3"');
+  // Faylı müvəqqəti yadda saxlamaq üçün unikal ad (məsələn: audio-1692345.mp3) yaradırıq
+  const tempFileName = `audio-${Date.now()}.mp3`;
+  const tempFilePath = path.join(__dirname, tempFileName);
 
-    const subprocess = youtubeDl.exec(videoURL, {
-      output: '-',
-      format: 'bestaudio',
+  try {
+    // 1. Mahnını serverin yaddaşına tam hazır vəziyyətdə yükləyirik
+    await youtubeDl(videoURL, {
+      output: tempFilePath,
+      extractAudio: true,
       audioFormat: 'mp3',
-      ffmpegLocation: ffmpegPath // ffmpeg-i birbaşa qovluqdan oxuyur
+      ffmpegLocation: ffmpegPath
     });
 
-    subprocess.stdout.pipe(res);
+    console.log(`>>> Mahnı serverə tam yükləndi, ön üzə (WaveSurfer-ə) göndərilir...`);
 
-    subprocess.on('close', (code) => {
-      console.log(`>>> Proses bitdi. (Kod: ${code})`);
+    // 2. Tam hazır faylı istifadəçiyə göndəririk (WaveSurfer ancaq bu halda dalğa çəkir!)
+    res.download(tempFilePath, 'track.mp3', (err) => {
+      if (err) {
+        console.error('>>> [GÖNDƏRMƏ XƏTASI]:', err.message);
+      }
+      // 3. İstifadəçiyə göndəriləndən dərhal sonra faylı serverdən silirik
+      fs.unlink(tempFilePath, (unlinkErr) => {
+        if (unlinkErr) console.error("Faylı silərkən xəta:", unlinkErr);
+      });
     });
 
   } catch (err) {
