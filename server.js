@@ -1,13 +1,20 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const fs = require('fs'); // Faylları silmək üçün əlavə etdik
 const youtubeDl = require('youtube-dl-exec');
-const ffmpegPath = require('ffmpeg-static');
 
 const app = express();
 app.use(cors());
 app.use(express.static(path.join(__dirname)));
+
+// QORUYUCU: Serverdə xəta yarandıqda serverin çökməsinin qarşısını alır
+process.on('uncaughtException', (err) => {
+  console.error('>>> [XƏTA TUTULDU - SERVER ÇÖKMƏDİ]:', err.message);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('>>> [XƏTA TUTULDU - SERVER ÇÖKMƏDİ]:', reason);
+});
 
 function cleanUrl(url) {
   try {
@@ -22,41 +29,38 @@ function cleanUrl(url) {
   }
 }
 
-app.get('/download', async (req, res) => {
+app.get('/download', (req, res) => {
   const rawURL = req.query.url;
   if (!rawURL) return res.status(400).send('Link daxil edilməyib.');
 
   const videoURL = cleanUrl(rawURL);
-  console.log(`\n>>> [YÜKLƏNİR]: ${videoURL}`);
-
-  // Faylı müvəqqəti yadda saxlamaq üçün unikal ad (məsələn: audio-1692345.mp3) yaradırıq
-  const tempFileName = `audio-${Date.now()}.mp3`;
-  const tempFilePath = path.join(__dirname, tempFileName);
+  console.log(`>>> [YÜKLƏNİR]: ${videoURL}`);
 
   try {
-    // 1. Mahnını serverin yaddaşına tam hazır vəziyyətdə yükləyirik
-    await youtubeDl(videoURL, {
-      output: tempFilePath,
-      extractAudio: true,
-      audioFormat: 'mp3',
-      ffmpegLocation: ffmpegPath
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Content-Disposition', 'attachment; filename="track.mp3"');
+
+    const subprocess = youtubeDl.exec(videoURL, {
+      output: '-',
+      format: 'bestaudio/best',
+      noCheckCertificate: true,
+      noWarnings: true
     });
 
-    console.log(`>>> Mahnı serverə tam yükləndi, ön üzə (WaveSurfer-ə) göndərilir...`);
+    subprocess.stdout.pipe(res);
 
-    // 2. Tam hazır faylı istifadəçiyə göndəririk (WaveSurfer ancaq bu halda dalğa çəkir!)
-    res.download(tempFilePath, 'track.mp3', (err) => {
-      if (err) {
-        console.error('>>> [GÖNDƏRMƏ XƏTASI]:', err.message);
+    subprocess.on('error', (err) => {
+      console.error('>>> [SUBPROCESS XƏTASI]:', err.message);
+      if (!res.headersSent) res.status(500).send('Yükləmə xətası.');
+    });
+
+    req.on('close', () => {
+      if (!res.writableEnded) {
+        subprocess.kill('SIGKILL');
       }
-      // 3. İstifadəçiyə göndəriləndən dərhal sonra faylı serverdən silirik
-      fs.unlink(tempFilePath, (unlinkErr) => {
-        if (unlinkErr) console.error("Faylı silərkən xəta:", unlinkErr);
-      });
     });
-
   } catch (err) {
-    console.error('>>> [XƏTA]:', err.message);
+    console.error('>>> [SERVER XƏTASI]:', err.message);
     if (!res.headersSent) res.status(500).send('Server xətası.');
   }
 });
