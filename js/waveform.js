@@ -292,7 +292,7 @@ async function fetchYouTubeAudio() {
       console.log("YouTube adını çəkmək olmadı, standart ad istifadə edilir:", titleErr);
     }
 
-    const response = await fetch(`https://beatmixx.onrender.com/download?url=${encodeURIComponent(url)}`);
+    const response = await fetch(`/download?url=${encodeURIComponent(url)}`);
     if (!response.ok) {
       throw new Error("Server xətası: Mahnı yüklənə bilmədi.");
     }
