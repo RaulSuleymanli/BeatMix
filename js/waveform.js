@@ -274,7 +274,7 @@ async function fetchYouTubeAudio() {
 
   if (status) {
     status.style.display = "block";
-    status.innerText = "Mahnı serverdən yüklənir, xahiş olunur gözləyin...";
+    status.innerText = "Mahnı serverdən yüklənir, xahiş olunur gözləyin (Bu bir neçə saniyə çəkə bilər)...";
     status.style.color = "#ffcc00";
   }
 
@@ -289,26 +289,33 @@ async function fetchYouTubeAudio() {
         }
       }
     } catch (titleErr) {
-      console.log("YouTube adını çəkmək olmadı, standart ad istifadə edilir:", titleErr);
+      console.log("YouTube adını çəkmək olmadı:", titleErr);
     }
 
     const downloadUrl = `/download?url=${encodeURIComponent(url)}`;
     
-    // Serverin mahnını hazırladığını yoxlayırıq
+    // 1. Səsi tam olaraq serverdən çəkirik
     const response = await fetch(downloadUrl);
     if (!response.ok) {
-      throw new Error("Server xətası: Mahnı yüklənə bilmədi.");
+      throw new Error(`Server xətası: Mahnı tapılmadı və ya yüklənmədi (Status: ${response.status})`);
     }
 
-    // ƏSAS HƏLL: Blob (süni fayl) yaradıb WaveSurfer-i bloklamaq əvəzinə,
-    // birbaşa serverin linkini veririk! 
-    const audioUrl = downloadUrl;
+    // 2. Gələn məlumatı fayl (Blob) formatına salırıq
+    const blob = await response.blob();
+    
+    // Əgər server boş fayl qaytarıbsa, xəta verək
+    if (blob.size === 0) {
+      throw new Error("Serverdən gələn audio faylı boşdur (0 byte).");
+    }
+
+    // 3. Blob-dan lokal link yaradırıq
+    const audioUrl = URL.createObjectURL(blob);
 
     updateTrackName(activeYtTrack, customTitle);
 
     if (activeYtTrack === 1) {
       currentAudioUrls.track1 = audioUrl;
-      fullWs1.load(audioUrl);
+      fullWs1.load(audioUrl); // WaveSurfer artıq hazır faylı oxuyur
       analyzeAudioMetadata(audioUrl, "bpm-1", "key-1", "zoom-bpm-1", "zoom-key-1", "track1");
       prepareMixAudioElement(1, audioUrl);
     } else {
@@ -322,7 +329,7 @@ async function fetchYouTubeAudio() {
   } catch (err) {
     console.error("YouTube Yükləmə Xətası:", err);
     if (status) {
-      status.innerText = "Xəta baş verdi! Serverin (node server.js) açıq olduğundan və linkin düzgünlüyündən əmin olun.";
+      status.innerText = `Xəta baş verdi: ${err.message}. F12 (Console) bölməsini yoxlayın.`;
       status.style.color = "#ff4444";
     }
   }
