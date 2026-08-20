@@ -4,7 +4,7 @@ const path = require('path');
 const { Readable } = require('stream');
 
 const app = express();
-app.use(cors());
+app.use(cors({ origin: '*' }));
 app.use(express.static(path.join(__dirname)));
 
 process.on('uncaughtException', (err) => console.error('>>> [XƏTA]:', err.message));
@@ -16,7 +16,6 @@ function extractVideoId(url) {
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
-// Yalnız səs faylını öz üzərindən keçirən (proxy edən) aktiv Invidious serverləri
 const INVIDIOUS_INSTANCES = [
   'https://invidious.nerdvpn.de',
   'https://inv.us.projectsegfau.lt',
@@ -39,14 +38,13 @@ app.get('/download', async (req, res) => {
   for (const instance of INVIDIOUS_INSTANCES) {
     console.log(`>>> [Sınaq olunur Invidious]: ${instance}`);
     try {
-      // Invidious-un öz daxili media axın linki (Render IP-si YouTube-a görünmür)
       const streamUrl = `${instance}/latest_version?id=${videoId}&italic=true&listen=true`;
 
       const mediaRes = await fetch(streamUrl, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
         },
-        signal: AbortSignal.timeout(8000)
+        signal: AbortSignal.timeout(10000)
       });
 
       if (mediaRes.ok && mediaRes.body) {
@@ -62,12 +60,15 @@ app.get('/download', async (req, res) => {
 
   if (!audioStreamResponse) {
     console.error('>>> [BÜTÜN INVIDIOUS SERVERLƏRİ UĞURSUZ OLDU]');
-    return res.status(500).send('Mahnı emal edilə bilmədi. Lütfən bir az sonra yenidən cəhd edin.');
+    return res.status(500).send('Mahnı emal edilə bilmədi.');
   }
 
   try {
-    res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('Content-Disposition', 'attachment; filename="track.mp3"');
+    // Səs faylının serverdən gələn Orijinal tipini çəkirik (Brauzerin rahat oxuması üçün)
+    const realContentType = audioStreamResponse.headers.get('content-type') || 'audio/mpeg';
+
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Content-Type', realContentType);
 
     if (audioStreamResponse.body) {
       Readable.fromWeb(audioStreamResponse.body).pipe(res);
