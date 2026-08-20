@@ -1,7 +1,6 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { Readable } = require('stream');
 
 const app = express();
 app.use(cors({ origin: '*' }));
@@ -36,14 +35,11 @@ app.get('/download', async (req, res) => {
   let audioStreamResponse = null;
 
   for (const instance of INVIDIOUS_INSTANCES) {
-    console.log(`>>> [Sınaq olunur Invidious]: ${instance}`);
+    console.log(`>>> [Sınaq olunur]: ${instance}`);
     try {
       const streamUrl = `${instance}/latest_version?id=${videoId}&italic=true&listen=true`;
-
       const mediaRes = await fetch(streamUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
-        },
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
         signal: AbortSignal.timeout(10000)
       });
 
@@ -53,29 +49,28 @@ app.get('/download', async (req, res) => {
         break;
       }
     } catch (err) {
-      console.log(`>>> [İnstance Xətası]: ${instance} - ${err.message}`);
       continue;
     }
   }
 
   if (!audioStreamResponse) {
-    console.error('>>> [BÜTÜN INVIDIOUS SERVERLƏRİ UĞURSUZ OLDU]');
     return res.status(500).send('Mahnı emal edilə bilmədi.');
   }
 
   try {
-    // Səs faylının serverdən gələn Orijinal tipini çəkirik (Brauzerin rahat oxuması üçün)
+    // 1. Səsi bütöv şəkildə yükləyirik (WaveSurfer-in tələb etdiyi format)
+    const arrayBuffer = await audioStreamResponse.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
     const realContentType = audioStreamResponse.headers.get('content-type') || 'audio/mpeg';
 
+    // 2. Faylın tipini VƏ ÖLÇÜSÜNÜ brauzerə bildiririk ki, dalğanı çəkə bilsin
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Content-Type', realContentType);
+    res.setHeader('Content-Length', buffer.length); 
+    res.setHeader('Accept-Ranges', 'bytes');
 
-    if (audioStreamResponse.body) {
-      Readable.fromWeb(audioStreamResponse.body).pipe(res);
-    } else {
-      const arrayBuffer = await audioStreamResponse.arrayBuffer();
-      res.send(Buffer.from(arrayBuffer));
-    }
+    // 3. Səsi göndəririk
+    res.send(buffer);
   } catch (err) {
     console.error('>>> [Ötürmə Xətası]:', err.message);
     if (!res.headersSent) res.status(500).send('Audio göndərilərkən xəta baş verdi.');
