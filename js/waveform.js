@@ -292,13 +292,17 @@ async function fetchYouTubeAudio() {
       console.log("YouTube adını çəkmək olmadı, standart ad istifadə edilir:", titleErr);
     }
 
-    const response = await fetch(`/download?url=${encodeURIComponent(url)}`);
+    const downloadUrl = `/download?url=${encodeURIComponent(url)}`;
+    
+    // Serverin mahnını hazırladığını yoxlayırıq
+    const response = await fetch(downloadUrl);
     if (!response.ok) {
       throw new Error("Server xətası: Mahnı yüklənə bilmədi.");
     }
 
-    const blob = await response.blob();
-    const audioUrl = URL.createObjectURL(blob);
+    // ƏSAS HƏLL: Blob (süni fayl) yaradıb WaveSurfer-i bloklamaq əvəzinə,
+    // birbaşa serverin linkini veririk! 
+    const audioUrl = downloadUrl;
 
     updateTrackName(activeYtTrack, customTitle);
 
