@@ -10,18 +10,19 @@ app.use(express.static(path.join(__dirname)));
 process.on('uncaughtException', (err) => console.error('>>> [XƏTA]:', err.message));
 process.on('unhandledRejection', (reason) => console.error('>>> [XƏTA]:', reason));
 
-// Linkin içindən yalnız ID-ni (məsələn: a6Z8_oaGydU) tapıb çıxarır
 function extractVideoId(url) {
   const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
   const match = url.match(regExp);
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
-// YouTube-un bloklarını aşmaq üçün 3 fərqli Piped Proxy serveri
-const PIPED_INSTANCES = [
-  'https://pipedapi.kavin.rocks',
-  'https://pipedapi.syncpundit.io',
-  'https://api.piped.projectsegfau.lt'
+// Yalnız səs faylını öz üzərindən keçirən (proxy edən) aktiv Invidious serverləri
+const INVIDIOUS_INSTANCES = [
+  'https://invidious.nerdvpn.de',
+  'https://inv.us.projectsegfau.lt',
+  'https://invidious.drgns.space',
+  'https://invidious.privacydev.net',
+  'https://invidious.io.lol'
 ];
 
 app.get('/download', async (req, res) => {
@@ -33,51 +34,49 @@ app.get('/download', async (req, res) => {
 
   console.log(`>>> [YÜKLƏNİR]: Video ID - ${videoId}`);
 
-  let audioUrl = null;
+  let audioStreamResponse = null;
 
-  // İşləyən proxy serverini tapana qədər bir-bir yoxlayırıq
-  for (const api of PIPED_INSTANCES) {
-    console.log(`>>> [Yoxlanılır Proxy]: ${api}`);
+  for (const instance of INVIDIOUS_INSTANCES) {
+    console.log(`>>> [Sınaq olunur Invidious]: ${instance}`);
     try {
-      const response = await fetch(`${api}/streams/${videoId}`);
-      if (!response.ok) continue; // İşləməsə, digərinə keç
-      
-      const data = await response.json();
-      if (data && data.audioStreams && data.audioStreams.length > 0) {
-        // Brauzerlərdə ən yaxşı işləyən audio formatını seçirik
-        const bestAudio = data.audioStreams.find(s => s.mimeType.includes('mp4')) || data.audioStreams[0];
-        audioUrl = bestAudio.url; // Bu URL YouTube-a yox, Proxy-ə gedir!
-        console.log(`>>> [UĞURLU TAPIQ]: ${api}`);
-        break; 
+      // Invidious-un öz daxili media axın linki (Render IP-si YouTube-a görünmür)
+      const streamUrl = `${instance}/latest_version?id=${videoId}&italic=true&listen=true`;
+
+      const mediaRes = await fetch(streamUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+        },
+        signal: AbortSignal.timeout(8000)
+      });
+
+      if (mediaRes.ok && mediaRes.body) {
+        audioStreamResponse = mediaRes;
+        console.log(`>>> [UĞURLU TAPIQ]: ${instance}`);
+        break;
       }
     } catch (err) {
-      console.log(`>>> [Proxy İşləmədi]: ${api}`);
+      console.log(`>>> [İnstance Xətası]: ${instance} - ${err.message}`);
       continue;
     }
   }
 
-  if (!audioUrl) {
-    console.error('>>> [BÜTÜN PROXY SERVERLƏR UĞURSUZ OLDU]');
-    return res.status(500).send('Mahnı blokları aşa bilmədi.');
+  if (!audioStreamResponse) {
+    console.error('>>> [BÜTÜN INVIDIOUS SERVERLƏRİ UĞURSUZ OLDU]');
+    return res.status(500).send('Mahnı emal edilə bilmədi. Lütfən bir az sonra yenidən cəhd edin.');
   }
 
   try {
-    // Səsi YouTube-dan deyil, tapdığımız gizli vasitəçidən çəkirik
-    const audioStream = await fetch(audioUrl);
-    if (!audioStream.ok) throw new Error('Səs faylı proxy-dən alına bilmədi.');
-
     res.setHeader('Content-Type', 'audio/mpeg');
     res.setHeader('Content-Disposition', 'attachment; filename="track.mp3"');
 
-    // Səsi kəsilmədən axın (pipe) vasitəsilə saytına ötürürük
-    if (audioStream.body) {
-       Readable.fromWeb(audioStream.body).pipe(res);
+    if (audioStreamResponse.body) {
+      Readable.fromWeb(audioStreamResponse.body).pipe(res);
     } else {
-       const arrayBuffer = await audioStream.arrayBuffer();
-       res.send(Buffer.from(arrayBuffer));
+      const arrayBuffer = await audioStreamResponse.arrayBuffer();
+      res.send(Buffer.from(arrayBuffer));
     }
   } catch (err) {
-    console.error('>>> [Axın Xətası]:', err.message);
+    console.error('>>> [Ötürmə Xətası]:', err.message);
     if (!res.headersSent) res.status(500).send('Audio göndərilərkən xəta baş verdi.');
   }
 });
