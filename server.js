@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
+const os = require('os');
 
 const app = express();
 app.use(cors({ origin: '*' }));
@@ -32,6 +34,16 @@ app.get('/download', async (req, res) => {
 
   console.log(`>>> [YÜKLƏNİR]: Video ID - ${videoId}`);
 
+  // Mahnı üçün Render-in müvəqqəti yaddaşında xüsusi fayl yolu yaradırıq
+  const tempFilePath = path.join(os.tmpdir(), `${videoId}.mp3`);
+
+  // ƏGƏR MAHNINI ƏVVƏL YÜKLƏMİŞİKSƏ, BİRBAŞA YADDAŞDAN VER (Sürətli dalğa!)
+  if (fs.existsSync(tempFilePath)) {
+    console.log(`>>> [KEŞDƏN OXUNUR VƏ GÖNDƏRİLİR]: ${videoId}`);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    return res.sendFile(tempFilePath);
+  }
+
   let audioStreamResponse = null;
 
   for (const instance of INVIDIOUS_INSTANCES) {
@@ -58,19 +70,17 @@ app.get('/download', async (req, res) => {
   }
 
   try {
-    // 1. Səsi bütöv şəkildə yükləyirik (WaveSurfer-in tələb etdiyi format)
+    console.log(`>>> [FAYLA YAZILIR]...`);
     const arrayBuffer = await audioStreamResponse.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    const realContentType = audioStreamResponse.headers.get('content-type') || 'audio/mpeg';
 
-    // 2. Faylın tipini VƏ ÖLÇÜSÜNÜ brauzerə bildiririk ki, dalğanı çəkə bilsin
+    // 1. Səsi bütöv şəkildə serverin içinə fayl kimi yazırıq
+    fs.writeFileSync(tempFilePath, buffer);
+
+    // 2. res.sendFile WaveSurfer-in istədiyi o lənətə gəlmiş "Range" dəstəyini avtomatik verir
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Content-Type', realContentType);
-    res.setHeader('Content-Length', buffer.length); 
-    res.setHeader('Accept-Ranges', 'bytes');
-
-    // 3. Səsi göndəririk
-    res.send(buffer);
+    res.sendFile(tempFilePath);
+    
   } catch (err) {
     console.error('>>> [Ötürmə Xətası]:', err.message);
     if (!res.headersSent) res.status(500).send('Audio göndərilərkən xəta baş verdi.');
