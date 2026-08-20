@@ -17,13 +17,104 @@ function extractVideoId(url) {
   return (match && match[2].length === 11) ? match[2] : null;
 }
 
-const INVIDIOUS_INSTANCES = [
-  'https://invidious.nerdvpn.de',
-  'https://inv.us.projectsegfau.lt',
-  'https://invidious.drgns.space',
-  'https://invidious.privacydev.net',
-  'https://invidious.io.lol'
-];
+// 3 fərqli güclü API ilə audio linkini əldə edən funksiya
+async function getAudioDirectUrl(videoId) {
+  const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+
+  // 1. MƏNBƏ: Cobalt API (Ən sürətli və stabil)
+  const cobaltInstances = [
+    'https://api.cobalt.tools',
+    'https://cobalt-api.kwiatek.xyz'
+  ];
+
+  for (const instance of cobaltInstances) {
+    try {
+      console.log(`>>> [Cobalt sınaq]: ${instance}`);
+      const res = await fetch(`${instance}/`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          url: youtubeUrl,
+          downloadMode: 'audio',
+          audioFormat: 'mp3'
+        }),
+        signal: AbortSignal.timeout(8000)
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.url) {
+          console.log(`>>> [Cobalt UĞURLU API TAPIQ]`);
+          return data.url;
+        }
+      }
+    } catch (e) {
+      console.log(`>>> [Cobalt Xətası]: ${e.message}`);
+    }
+  }
+
+  // 2. MƏNBƏ: Piped API
+  const pipedInstances = [
+    'https://pipedapi.kavin.rocks',
+    'https://api.piped.privacydev.net',
+    'https://pipedapi.mha.fi'
+  ];
+
+  for (const instance of pipedInstances) {
+    try {
+      console.log(`>>> [Piped sınaq]: ${instance}`);
+      const res = await fetch(`${instance}/streams/${videoId}`, {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        signal: AbortSignal.timeout(8000)
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.audioStreams && data.audioStreams.length > 0) {
+          const audioStream = data.audioStreams[data.audioStreams.length - 1];
+          console.log(`>>> [Piped UĞURLU API TAPIQ]`);
+          return audioStream.url;
+        }
+      }
+    } catch (e) {
+      console.log(`>>> [Piped Xətası]: ${e.message}`);
+    }
+  }
+
+  // 3. MƏNBƏ: Invidious JSON API
+  const invidiousInstances = [
+    'https://inv.tux.pizza',
+    'https://invidious.nerdvpn.de',
+    'https://invidious.drgns.space'
+  ];
+
+  for (const instance of invidiousInstances) {
+    try {
+      console.log(`>>> [Invidious API sınaq]: ${instance}`);
+      const res = await fetch(`${instance}/api/v1/videos/${videoId}`, {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        signal: AbortSignal.timeout(8000)
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const adaptive = data.adaptiveFormats || [];
+        const audioFormats = adaptive.filter(f => f.type && f.type.includes('audio'));
+        if (audioFormats.length > 0) {
+          console.log(`>>> [Invidious UĞURLU API TAPIQ]`);
+          return audioFormats[0].url;
+        }
+      }
+    } catch (e) {
+      console.log(`>>> [Invidious Xətası]: ${e.message}`);
+    }
+  }
+
+  return null;
+}
 
 app.get('/download', async (req, res) => {
   const rawURL = req.query.url;
@@ -34,55 +125,62 @@ app.get('/download', async (req, res) => {
 
   console.log(`>>> [YÜKLƏNİR]: Video ID - ${videoId}`);
 
-  // Mahnı üçün Render-in müvəqqəti yaddaşında xüsusi fayl yolu yaradırıq
   const tempFilePath = path.join(os.tmpdir(), `${videoId}.mp3`);
 
-  // ƏGƏR MAHNINI ƏVVƏL YÜKLƏMİŞİKSƏ, BİRBAŞA YADDAŞDAN VER (Sürətli dalğa!)
+  // 1. KEŞ YOXLANILMASI VƏ XƏTALI FAYL TƏMİZLƏNMƏSİ
   if (fs.existsSync(tempFilePath)) {
-    console.log(`>>> [KEŞDƏN OXUNUR VƏ GÖNDƏRİLİR]: ${videoId}`);
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    return res.sendFile(tempFilePath);
-  }
-
-  let audioStreamResponse = null;
-
-  for (const instance of INVIDIOUS_INSTANCES) {
-    console.log(`>>> [Sınaq olunur]: ${instance}`);
-    try {
-      const streamUrl = `${instance}/latest_version?id=${videoId}&italic=true&listen=true`;
-      const mediaRes = await fetch(streamUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
-        signal: AbortSignal.timeout(10000)
-      });
-
-      if (mediaRes.ok && mediaRes.body) {
-        audioStreamResponse = mediaRes;
-        console.log(`>>> [UĞURLU TAPIQ]: ${instance}`);
-        break;
-      }
-    } catch (err) {
-      continue;
+    const stats = fs.statSync(tempFilePath);
+    // Əgər fayl 50KB-dan kiçikdirsə (yəni xəta mətni/HTML yazılıbsa), silirik
+    if (stats.size > 50000) {
+      console.log(`>>> [KEŞDƏN OXUNUR VƏ GÖNDƏRİLİR]: ${videoId} (${stats.size} bytes)`);
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      return res.sendFile(tempFilePath);
+    } else {
+      console.log(`>>> [XƏTALI KÖHNƏ FAYL SİLİNDİ]: ${videoId}`);
+      try { fs.unlinkSync(tempFilePath); } catch (e) {}
     }
   }
 
-  if (!audioStreamResponse) {
-    return res.status(500).send('Mahnı emal edilə bilmədi.');
+  // 2. CANLI AUDİO LİNKİNİN TAPA BİLMƏSİ
+  const directAudioUrl = await getAudioDirectUrl(videoId);
+
+  if (!directAudioUrl) {
+    return res.status(500).send('Mahnı mənbələrindən heç biri ilə əlaqə saxlanıla bilmədi.');
   }
 
+  // 3. FAYLIN SERVERƏ YÜKLƏNİB HAZIRLANMASI
   try {
-    console.log(`>>> [FAYLA YAZILIR]...`);
-    const arrayBuffer = await audioStreamResponse.arrayBuffer();
+    console.log(`>>> [SƏS AXINI YÜKLƏNİR VƏ YAZILIR]...`);
+    const audioRes = await fetch(directAudioUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      },
+      signal: AbortSignal.timeout(20000)
+    });
+
+    if (!audioRes.ok) {
+      throw new Error(`Səs faylı yüklənə bilmədi, HTTP Status: ${audioRes.status}`);
+    }
+
+    const arrayBuffer = await audioRes.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // 1. Səsi bütöv şəkildə serverin içinə fayl kimi yazırıq
-    fs.writeFileSync(tempFilePath, buffer);
+    // Əgər yüklənən şey fayl yox, kiçik bir HTML xəta mətni olarsa (50KB-dan az)
+    if (buffer.length < 50000) {
+      throw new Error('Yüklənən fayl audio deyil (və ya zədələnib).');
+    }
 
-    // 2. res.sendFile WaveSurfer-in istədiyi o lənətə gəlmiş "Range" dəstəyini avtomatik verir
+    fs.writeFileSync(tempFilePath, buffer);
+    console.log(`>>> [FAYL MÜVƏFFƏQİYYƏTLƏ YAZILDI]: ${tempFilePath} (${buffer.length} bytes)`);
+
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.sendFile(tempFilePath);
-    
+
   } catch (err) {
     console.error('>>> [Ötürmə Xətası]:', err.message);
+    if (fs.existsSync(tempFilePath)) {
+      try { fs.unlinkSync(tempFilePath); } catch (e) {}
+    }
     if (!res.headersSent) res.status(500).send('Audio göndərilərkən xəta baş verdi.');
   }
 });
