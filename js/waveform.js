@@ -292,7 +292,7 @@ async function fetchYouTubeAudio() {
       console.log("YouTube adını çəkmək olmadı:", titleErr);
     }
 
-    const downloadUrl = `/download?url=${encodeURIComponent(url)}`;
+    const downloadUrl = `https://beatmix-production.up.railway.app/download?url=${encodeURIComponent(url)}`;
     
     // 1. Səsi tam olaraq serverdən çəkirik
     const response = await fetch(downloadUrl);
