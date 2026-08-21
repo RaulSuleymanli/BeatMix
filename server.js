@@ -1,7 +1,11 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { Readable } = require('stream');
+const axios = require('axios');
+const dns = require('dns');
+
+// RENDER SERVERİNDƏKİ ŞƏBƏKƏ (FETCH FAILED) XƏTASINI HƏLL EDƏN ƏSAS KOD:
+dns.setDefaultResultOrder('ipv4first');
 
 const app = express();
 app.use(cors({ origin: '*' }));
@@ -19,7 +23,7 @@ function extractVideoId(url) {
 }
 
 async function getAudioStreamUrl(videoId, fullUrl) {
-  // Cobalt API vasitəsilə bloklanmadan səs keçidinin alınması
+  // 1. Cobalt API
   const cobaltInstances = [
     'https://api.cobalt.tools',
     'https://co.wuk.sh'
@@ -28,32 +32,28 @@ async function getAudioStreamUrl(videoId, fullUrl) {
   for (const instance of cobaltInstances) {
     try {
       console.log(`>>> [Cobalt Sorğusu]: ${instance}`);
-      const res = await fetch(`${instance}/`, {
-        method: 'POST',
+      const res = await axios.post(`${instance}/`, {
+        url: fullUrl,
+        downloadMode: 'audio',
+        audioFormat: 'mp3'
+      }, {
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          url: fullUrl,
-          downloadMode: 'audio',
-          audioFormat: 'mp3'
-        })
+        timeout: 10000 
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.url) {
-          console.log(`>>> [Cobalt Uğurlu]`);
-          return data.url;
-        }
+      if (res.data && res.data.url) {
+        console.log(`>>> [Cobalt Uğurlu]`);
+        return res.data.url;
       }
     } catch (err) {
-      console.log(`>>> [Cobalt Xətası]: ${err.message}`);
+      console.log(`>>> [Cobalt Xətası - ${instance}]:`, err.message);
     }
   }
 
-  // Ehtiyat mənbə: Piped API
+  // 2. Piped API
   const pipedInstances = [
     'https://pipedapi.kavin.rocks',
     'https://api.piped.privacydev.net',
@@ -63,17 +63,15 @@ async function getAudioStreamUrl(videoId, fullUrl) {
   for (const instance of pipedInstances) {
     try {
       console.log(`>>> [Piped Sorğusu]: ${instance}`);
-      const res = await fetch(`${instance}/streams/${videoId}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.audioStreams && data.audioStreams.length > 0) {
-          const bestAudio = data.audioStreams[data.audioStreams.length - 1];
-          console.log(`>>> [Piped Uğurlu]`);
-          return bestAudio.url;
-        }
+      const res = await axios.get(`${instance}/streams/${videoId}`, { timeout: 10000 });
+      
+      if (res.data && res.data.audioStreams && res.data.audioStreams.length > 0) {
+        const bestAudio = res.data.audioStreams[res.data.audioStreams.length - 1];
+        console.log(`>>> [Piped Uğurlu]`);
+        return bestAudio.url;
       }
     } catch (err) {
-      console.log(`>>> [Piped Xətası]: ${err.message}`);
+      console.log(`>>> [Piped Xətası - ${instance}]:`, err.message);
     }
   }
 
@@ -94,23 +92,24 @@ app.get('/download', async (req, res) => {
     const audioUrl = await getAudioStreamUrl(videoId, cleanFullUrl);
 
     if (!audioUrl) {
-      console.error('>>> [XƏTA]: Səs linki əldə edilə bilmədi.');
-      return res.status(500).send('Mahnı mənbəsi tapılmadı.');
+      console.error('>>> [XƏTA]: Bütün mənbələr əlçatmazdır.');
+      return res.status(500).send('Səs mənbəyi tapılmadı.');
     }
 
     console.log(`>>> [SƏS AXINI BAŞLAYIR]...`);
-    const mediaRes = await fetch(audioUrl);
-
-    if (!mediaRes.ok) {
-      throw new Error(`Media yüklənmədi, status: ${mediaRes.status}`);
-    }
+    
+    // Axios ilə birbaşa səs axınını yaradırıq
+    const mediaRes = await axios({
+      method: 'get',
+      url: audioUrl,
+      responseType: 'stream'
+    });
 
     res.setHeader('Content-Type', 'audio/mpeg');
     res.setHeader('Access-Control-Allow-Origin', '*');
 
-    // Səs faylını canlı olaraq WaveSurfer-ə axıdırıq
-    const nodeStream = Readable.fromWeb(mediaRes.body);
-    nodeStream.pipe(res);
+    // Səsi ön üzə axıdırıq
+    mediaRes.data.pipe(res);
 
   } catch (err) {
     console.error('>>> [SERVER XƏTASI]:', err.message);
