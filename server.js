@@ -7,7 +7,6 @@ const app = express();
 app.use(cors({ origin: '*' }));
 app.use(express.static(path.join(__dirname)));
 
-// YouTube linkindən qısa Video ID-ni tapan funksiya
 function extractVideoId(url) {
     const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
     return match ? match[1] : null;
@@ -22,45 +21,83 @@ app.get('/download', async (req, res) => {
 
     console.log(`>>> [YÜKLƏNİR]: ${videoId}`);
 
-    let data = null;
+    let streamUrl = null;
+    let mimeType = 'audio/webm';
     
-    // IP blokundan qorunmaq üçün 3 fərqli public Piped API instansından (proxy) istifadə edirik
-    const instances = [
-        'https://pipedapi.kavin.rocks',
-        'https://api.piped.projectsegfau.lt',
-        'https://pipedapi.tokhmi.xyz'
+    // 1. Şəbəkə: Daha stabil və yeni Piped API-ləri
+    const pipedInstances = [
+        'https://pipedapi.smnz.de',
+        'https://pipedapi.adminforge.de',
+        'https://piped-api.garudalinux.org',
+        'https://pipedapi.drgns.space',
+        'https://pipedapi.kavin.rocks'
     ];
 
-    // Hansı API serveri işləyirsə, ondan məlumatı çəkirik
-    for (let instance of instances) {
+    // 2. Şəbəkə: Piped serverləri çökərsə, Invidious API-ləri ehtiyat kimi işə düşür
+    const invidiousInstances = [
+        'https://vid.puffyan.us',
+        'https://inv.tux.pizza',
+        'https://invidious.fdn.fr'
+    ];
+
+    // Əvvəlcə Piped serverlərini yoxlayırıq
+    for (let instance of pipedInstances) {
         try {
-            console.log(`>>> [API YOXLANILIR]: ${instance}`);
+            console.log(`>>> [PIPED YOXLANILIR]: ${instance}`);
             const response = await fetch(`${instance}/streams/${videoId}`);
             if (response.ok) {
-                data = await response.json();
-                break; // İşləyən server tapan kimi dövrü dayandırır
+                const data = await response.json();
+                const audio = data.audioStreams.find(a => a.mimeType.startsWith('audio/webm')) 
+                           || data.audioStreams.find(a => a.mimeType.startsWith('audio/'));
+                if (audio && audio.url) {
+                    streamUrl = audio.url;
+                    mimeType = audio.mimeType;
+                    console.log(`>>> [UĞURLU]: ${instance}`);
+                    break;
+                }
+            } else {
+                console.log(`>>> [RƏDD EDİLDİ]: ${instance} - Status code: ${response.status}`);
             }
         } catch (e) {
-            console.log(`>>> [API XƏTASI]: ${instance} cavab vermədi.`);
+            console.log(`>>> [XƏTA]: ${instance} şəbəkə cavab vermədi.`);
         }
     }
 
-    if (!data) {
-        return res.status(500).send('Heç bir proxy API cavab vermir. Bir az sonra yenidən yoxlayın.');
+    // Əgər Piped tapmadılsa, Invidious serverlərini yoxlayırıq
+    if (!streamUrl) {
+        for (let instance of invidiousInstances) {
+            try {
+                console.log(`>>> [INVIDIOUS YOXLANILIR]: ${instance}`);
+                const response = await fetch(`${instance}/api/v1/videos/${videoId}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    const audio = data.adaptiveFormats.find(a => a.type.startsWith('audio/webm')) 
+                               || data.adaptiveFormats.find(a => a.type.startsWith('audio/'));
+                    if (audio && audio.url) {
+                        streamUrl = audio.url;
+                        mimeType = audio.type;
+                        console.log(`>>> [UĞURLU]: ${instance}`);
+                        break;
+                    }
+                } else {
+                    console.log(`>>> [RƏDD EDİLDİ]: ${instance} - Status code: ${response.status}`);
+                }
+            } catch (e) {
+                console.log(`>>> [XƏTA]: ${instance} şəbəkə cavab vermədi.`);
+            }
+        }
+    }
+
+    if (!streamUrl) {
+        return res.status(500).send('Heç bir API serveri cavab vermir. Zəhmət olmasa, bir neçə dəqiqə sonra təkrar cəhd edin.');
     }
 
     try {
-        // Gələn məlumatdan ən uyğun səs (audio) axınını tapırıq
-        const audioStream = data.audioStreams.find(a => a.mimeType.startsWith('audio/webm')) 
-                         || data.audioStreams.find(a => a.mimeType.startsWith('audio/'));
-                         
-        if (!audioStream || !audioStream.url) throw new Error('Səs axını tapılmadı.');
-
-        console.log(`>>> [AXIN TAPILDI]: ${audioStream.mimeType}`);
+        console.log(`>>> [AXIN BAŞLAYIR]: ${mimeType}`);
         
-        // Piped-in verdiyi təmiz səs axınını tutub birbaşa frontend-ə yönləndiririk
-        https.get(audioStream.url, (stream) => {
-            res.setHeader('Content-Type', audioStream.mimeType || 'audio/webm');
+        // Tapılan işlək linkdən səsi birbaşa ön tərəfə ötürürük
+        https.get(streamUrl, (stream) => {
+            res.setHeader('Content-Type', mimeType);
             res.setHeader('Access-Control-Allow-Origin', '*');
             stream.pipe(res);
         }).on('error', (err) => {
