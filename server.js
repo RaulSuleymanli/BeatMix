@@ -14,31 +14,35 @@ app.get('/download', (req, res) => {
   let rawURL = req.query.url;
   if (!rawURL) return res.status(400).send('Link daxil edilməyib.');
 
-  // Linkdəki xətalı simvolların (\, c) qarşısını almaq üçün təmizlik
+  // Linkdəki xətalı simvolların qarşısını almaq üçün təmizlik
   rawURL = rawURL.trim().replace(/\\+$/, '').replace(/c$/, '');
 
   console.log(`>>> [YÜKLƏNİR]: ${rawURL}`);
 
-  // WaveSurfer-in dalğanı oxuya bilməsi üçün düzgün başlıqlar
+  // WaveSurfer-in dalğanı oxuya bilməsi üçün mütləq başlıqlar
   res.setHeader('Content-Type', 'audio/mpeg');
   res.setHeader('Access-Control-Allow-Origin', '*');
 
   try {
-    console.log(`>>> [SƏS AXINI BAŞLADI - yt-dlp]`);
+    console.log(`>>> [SƏS AXINI BAŞLADI - Android Bypass ilə]`);
     
-    // YouTube-un "bot" blokadasını keçən əsas alət
     const subprocess = youtubedl.exec(rawURL, {
-      output: '-',          // Səsi heç yerə yaddaş etmədən birbaşa çıxışa yönləndirir
-      format: 'bestaudio',  // Ən yaxşı səs keyfiyyətini seçir
-      quiet: true,          // Konsol yazılarını səs faylına qarışdırmır (xətanın qarşısını alır)
+      output: '-',
+      format: 'bestaudio',
+      quiet: true,
       noWarnings: true,
-      noCheckCertificates: true
+      noCheckCertificates: true,
+      // BURA ƏLAVƏ EDİLDİ: YouTube-u aldadıb sorğunu Android telefondan gəlirmiş kimi göstəririk
+      extractorArgs: 'youtube:player_client=android',
+      // Render-in tez-tez bloklanan IPv6 ünvanından yan keçmək üçün
+      forceIpv4: true,
+      // Əvvəlki yarımçıq xətalı yaddaşı silmək üçün
+      rmCacheDir: true
     }, { 
-      // Səsi birbaşa göndəririk (pipe), xətaları isə Render loglarına yazdırırıq
       stdio: ['ignore', 'pipe', 'inherit'] 
     });
 
-    // Səs faylı gəldikcə birbaşa ön üzə (WaveSurfer-ə) axın edilir
+    // Mahnı gəldikcə dərhal ön üzə (WaveSurfer-ə) axın edilir
     subprocess.stdout.pipe(res);
 
     subprocess.on('close', (code) => {
