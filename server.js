@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const ytdl = require('ytdl-core');
+const ytdl = require('@distube/ytdl-core'); // <--- YENİ VƏ İŞLƏYƏN PAKET
 
 const app = express();
 app.use(cors({ origin: '*' }));
